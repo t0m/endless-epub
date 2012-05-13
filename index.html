@@ -1,0 +1,204 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Endless EPub</title>
+    <style>
+      body, html {
+        font-family:'palatino linotype', serif;
+        font-size:16px;
+        margin:0px;
+        padding:0px;
+        color:#333;
+        height:100%;
+        background-color:whiteSmoke;
+        text-align:left !important;
+      }
+      h1 {
+        margin:0px;
+      }
+      .large {
+        font-size:1.3em;
+      }
+      .center {
+        text-align:center;
+      }
+      .muted {
+        color:#777;
+      }
+      .container {
+        max-width:700px;
+        min-height:100%;
+        margin:0px auto 0px auto;
+      }
+      .page {
+        padding:20px;
+        margin:0px 10px 20px 10px;
+        border:1px solid #ccc;
+        box-shadow:0px 0px 7px #ccc;
+        min-height:400px;
+        background-color:white;        
+      }
+      .upload {
+        width:500px;
+        padding:20px;
+        border:2px solid #ccc;
+        margin:0px auto 20px auto;
+      }
+      .progress {
+
+        position:relative;
+        border:1px solid #ccc;
+        height:30px;
+        width:500px;
+        margin:0px auto 0px auto;
+      }
+      .meter {
+        position:absolute;
+        height:100%;
+        background-color:blue;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container" id="container">
+      <br/>
+      <div class="page" id="form-page">
+        <h1>EPub loader</h1>
+        <p>...</p>
+        <div class="upload center">
+          <span class="large">Select an epub:</span>
+          <input type="file" id="file"/>
+          <div class="muted">(Or drag one onto this window)</div>
+        </div>
+        <div class="progress">
+          <div class="meter"></div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+<script src="zip/archive.js"></script>
+<script src="jquery-1.7.2.min.js"></script>
+
+<script>
+  var GlobalZipLoader = new ZipLoader();
+
+  $('#file').change(function(event) {
+    return handleFiles(event.target.files);
+  });
+
+  function handleFiles(fileList) {
+    if (fileList.length > 1) {
+      alert('Whoa, one at a time');
+      return false;
+    }
+
+    var file = fileList[0];
+    
+    //calls unzipFile once the load is finished
+    var reader = makeFileReader();
+    reader.onload = function(event) {
+      unzipFile(event.target.result);
+    }
+    reader.readAsBinaryString(file);
+  }
+
+  function unzipFile(fileAsBinaryString) {
+    try {
+      GlobalZipLoader.readBinary('epub.zip', fileAsBinaryString);
+      var containerXML = GlobalZipLoader.load('epub.zip://META-INF/container.xml')
+      var contentLocation = $(containerXML).find('rootfile').attr('full-path');
+      var contentXML = GlobalZipLoader.load('epub.zip://' + contentLocation);
+      var currentDir = extractCurrentDir(contentLocation);
+      loadContentXML(currentDir, contentXML);
+    } catch (ex) {
+      alert("Error while loading file: " + ex); 
+    }
+  }
+
+  function extractCurrentDir(location) {
+    return location.substr(0, location.lastIndexOf('/') + 1);
+  }
+
+  function loadContentXML(contentLocation, contentXML) {
+    var itemLookup = {};
+    var parsed = $(contentXML);
+    parsed.find('manifest item').each(function(){
+      itemLookup[$(this).attr('id')] = $(this).attr('href');
+    });
+
+    entirePage = '';
+    var itemRefs = parsed.find('itemref')
+
+    itemRefs.each(function(idx){
+      var pageLocation = itemLookup[$(this).attr('idref')];
+      var pageContents = GlobalZipLoader.load('epub.zip://' + contentLocation + pageLocation);
+      var pageLocation = contentLocation + extractCurrentDir(pageLocation);
+      pageContents = replaceImages(pageLocation, pageContents);
+      entirePage += createNewPage(pageContents);
+      doProgress(idx+1, itemRefs.length);
+    });
+    $('#container').append(entirePage);
+  }
+
+  function createNewPage(pageContents) {
+    var newPage = $('<div class="page"/>');
+    newPage.html(pageContents);
+    return newPage[0].outerHTML;
+  }
+
+  function replaceImages(pageLocation, pageContents){
+    var newContents = $(pageContents);
+    newContents.find('img').each(function(){
+      var domImage = $(this);
+      var href = domImage.attr('src');
+      try {
+        var dataUri = GlobalZipLoader.loadImage('epub.zip://' + pageLocation + href);
+        domImage.attr('src', dataUri);
+      } catch (ex) {
+        domImage.remove();
+        console.log('error while loading file ' + pageLocation + href);
+      }
+    });
+    return newContents;
+  }
+
+  //makes a filereader with some extra stuff for error handling
+  function makeFileReader() {
+    var reader = new FileReader();
+
+    reader.onerror = function(event) {
+      if (event.target.error.name !== undefined) {
+        alert("Error: " + event.target.error.name);
+        alert(event.target.error.code);
+      } else {
+        alert(getErrorDescription(event.target.error.code));
+      }
+    }
+    return reader;
+  }
+
+  function doProgress(current, total) {
+    var progressElement = $('.progress');
+    var meterElement = $('.meter');
+    var progressWidth = progressElement.width();
+    var setWidth = (current / total) * 100 + '%';
+    console.log('meter width ' + setWidth);
+    meterElement.width(setWidth);
+    
+  }
+
+  // for deprecated FileError object still used by chrome
+  function getErrorDescription(errorCode) {
+    switch (errorCode) {
+      case 1: return 'File not found';
+      case 2: return 'Security error, you\'re probably trying to run this ' + 
+                      'locally in Chrome, which doesn\'t work. Try firefox ' + 
+                      'or run it on a server';
+      case 3: return 'File upload aborted';
+      case 4: return 'File wasn\'t readable';
+      case 5: return 'Data URL too long';
+      default: return 'Unknown error';
+    }
+  }
+</script>
