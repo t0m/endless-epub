@@ -557,7 +557,7 @@ var ZipLoader = function(zipURL) {
             if (entry) {
                 return zip.getInput(entry);
             } else {
-                throw "Requested file was not found in the archive";
+                throw "Requested file " + entryUrl + " was not found in the archive";
             }
         }
     }
@@ -568,6 +568,19 @@ var ZipLoader = function(zipURL) {
         } else {
             node.text = text;
         }
+    }
+
+    function processRelativePaths(path) {
+        var split = path.split('/');
+        var finished = new Array();
+        for (var x = 0; x < split.length; x++) {
+            if (split[x] == '..') {
+                finished.pop();
+            } else {
+                finished.push(split[x]);
+            }
+        }
+        return finished.join('/');
     }
 
     function getFileExtension(filename) {
@@ -604,17 +617,22 @@ var ZipLoader = function(zipURL) {
 	}
 	
     return {
+        readBinary : function(fileName, binaryString) {
+            _zipUrl = fileName;
+            loadComplete(binaryString);
+        },
         load : function(url) {
             isCompleteProcessRequired = false;
             switch(true) {
                 case ZIP_ENTRY_REG.test(url):
                     var result = ZIP_ENTRY_REG.exec(url);
                     _zipUrl = result[1];
-                    _entryUrl = result[2];
+                    _entryUrl = processRelativePaths(result[2]);
                     var zip = ZIP_CACHE[_zipUrl];
                     if (zip) {
                         dataFromZip(zip);
                     } else {
+                        alert('cache miss for zip item, doing full process');
                         isCompleteProcessRequired = true;
                         loadBinaryResource(url);
                     }
@@ -633,6 +651,7 @@ var ZipLoader = function(zipURL) {
                 data.position(0);
                 return _utf8_decode(data.readBytes(0, data.length()));
             } else {
+                alert('couldn\'t read file!');
                 return '';
             }
         },
