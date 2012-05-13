@@ -44,34 +44,22 @@
         border:2px solid #ccc;
         margin:0px auto 20px auto;
       }
-      .progress {
-
-        position:relative;
-        border:1px solid #ccc;
-        height:30px;
-        width:500px;
-        margin:0px auto 0px auto;
-      }
-      .meter {
-        position:absolute;
-        height:100%;
-        background-color:blue;
-      }
     </style>
   </head>
   <body>
     <div class="container" id="container">
       <br/>
       <div class="page" id="form-page">
-        <h1>EPub loader</h1>
-        <p>...</p>
+        <h1>Endless Epub</h1>
+        <p>
+          I don't like the &quot;click-to-page&quot; format of other desktop epub readers
+          so this will load the entire document into one page. Once your book has been loaded,
+          you can use &quot;right click -&gt; save as&quot; to get a complete copy for offline reading.
+          It may take a while for books with many images so be patient!
+        </p>
         <div class="upload center">
           <span class="large">Select an epub:</span>
           <input type="file" id="file"/>
-          <div class="muted">(Or drag one onto this window)</div>
-        </div>
-        <div class="progress">
-          <div class="meter"></div>
         </div>
       </div>
     </div>
@@ -83,8 +71,14 @@
 <script>
   var GlobalZipLoader = new ZipLoader();
 
+  //hide the intial page if we already have a book loaded
+  if ($('.page').length > 1) {
+    $('#form-page').hide();
+  }
+
   $('#file').change(function(event) {
-    return handleFiles(event.target.files);
+    $('.upload').css('background-color', 'rgba(100, 100, 100, 0.5)').css('opacity', '0.5');
+    handleFiles(event.target.files);
   });
 
   function handleFiles(fileList) {
@@ -99,6 +93,7 @@
     var reader = makeFileReader();
     reader.onload = function(event) {
       unzipFile(event.target.result);
+      $('#form-page').hide();
     }
     reader.readAsBinaryString(file);
   }
@@ -136,7 +131,7 @@
       var pageLocation = contentLocation + extractCurrentDir(pageLocation);
       pageContents = replaceImages(pageLocation, pageContents);
       entirePage += createNewPage(pageContents);
-      doProgress(idx+1, itemRefs.length);
+      //doProgress(idx+1, itemRefs.length);
     });
     $('#container').append(entirePage);
   }
@@ -178,15 +173,16 @@
     return reader;
   }
 
+  /* maybe later
   function doProgress(current, total) {
     var progressElement = $('.progress');
     var meterElement = $('.meter');
     var progressWidth = progressElement.width();
     var setWidth = (current / total) * 100 + '%';
     console.log('meter width ' + setWidth);
-    meterElement.width(setWidth);
-    
+    meterElement.width(setWidth); 
   }
+  */
 
   // for deprecated FileError object still used by chrome
   function getErrorDescription(errorCode) {
