@@ -1,17 +1,31 @@
 <!doctype html>
 <html>
   <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title>Endless EPub</title>
     <style>
-      body, html {
-        font-family:'palatino linotype', serif;
-        font-size:16px;
+      html, body {
         margin:0px;
         padding:0px;
+      }
+      body {
         color:#333;
         height:100%;
         background-color:whiteSmoke;
-        text-align:left !important;
+        line-height:1.7em;
+        font-size:19px;
+        font-family:'palatino linotype', 'georgia', serif;
+      }
+      img {
+        /* forcefully center images, may cause glitches if
+           books have any images that are laid out side by side */
+        display:block;
+        margin-left:auto;
+        margin-right:auto;
+      }
+      pre {
+        /* give a tighter line height for code */
+        line-height:1.2em;
       }
       h1 {
         margin:0px;
@@ -19,14 +33,12 @@
       .large {
         font-size:1.3em;
       }
-      .center {
-        text-align:center;
-      }
+
       .muted {
         color:#777;
       }
       .container {
-        max-width:700px;
+        max-width:800px;
         min-height:100%;
         margin:0px auto 0px auto;
       }
@@ -64,100 +76,143 @@
     </div>
   </body>
 </html>
-<script src="zip/archive.js"></script>
+
 <script src="jquery-1.7.2.min.js"></script>
+<script src="jszip.js"></script>
+<script src="jszip-load.js"></script>
+<script src="jszip-deflate.js"></script>
+<script src="jszip-inflate.js"></script>
 
 <script>
-  var GlobalZipLoader = new ZipLoader();
+  var ZipLoader = new JSZip();
 
-  //hide the intial page if we already have a book loaded
-  if ($('.page').length > 1) {
+  function cleanup() {
     $('#form-page').hide();
+    ZipLoader = null; //gc
   }
 
-  $('#file').change(function(event) {
-    $('.upload').css('background-color', 'rgba(100, 100, 100, 0.5)').css('opacity', '0.5');
-    handleFiles(event.target.files);
+  $(function() {
+    $('#file').change(function(event) {
+      $('.upload').css('background-color', 'rgba(100, 100, 100, 0.5)').css('opacity', '0.5');
+      handleFiles(event.target.files, cleanup);
+    });
   });
 
-  function handleFiles(fileList) {
-    if (fileList.length > 1) {
-      alert('Whoa, one at a time');
-      return false;
-    }
+  function extractPathPrefix(location) {
+    return location.substr(0, location.lastIndexOf('/') + 1);
+  }
 
-    var file = fileList[0];
+  function buildPath(currentDirectory, relativePath) {
+    var curSplit = currentDirectory.split('/');
+    curSplit.pop(); //remove trailing slash
+    var relSplit = relativePath.split('/');
+    for (var i = 0; i < relSplit.length; i++) {
+      if (relSplit[i] == '..') {
+        curSplit.pop();
+      } else {
+        curSplit.push(relSplit[i]);
+      }
+    }
+    return curSplit.join('/');
+  }
+
+  function handleFiles(files, callback) {
+    var file = files[0];
     
     //calls unzipFile once the load is finished
     var reader = makeFileReader();
     reader.onload = function(event) {
-      unzipFile(event.target.result);
-      $('#form-page').hide();
+      var blob = event.target.result;
+      ZipLoader.load(blob);
+      var containerXML = ZipLoader.file('META-INF/container.xml').data;
+      var contentLocation = $(containerXML).find('rootfile').attr('full-path');
+      var pathPrefix = extractPathPrefix(contentLocation);
+      loadContentXML(pathPrefix, ZipLoader.file(contentLocation).data);
+      callback();
     }
     reader.readAsBinaryString(file);
   }
 
-  function unzipFile(fileAsBinaryString) {
-    try {
-      GlobalZipLoader.readBinary('epub.zip', fileAsBinaryString);
-      var containerXML = GlobalZipLoader.load('epub.zip://META-INF/container.xml')
-      var contentLocation = $(containerXML).find('rootfile').attr('full-path');
-      var contentXML = GlobalZipLoader.load('epub.zip://' + contentLocation);
-      var currentDir = extractCurrentDir(contentLocation);
-      loadContentXML(currentDir, contentXML);
-    } catch (ex) {
-      alert("Error while loading file: " + ex); 
+  function getImageUriFor(imagePath) {
+    var fileExtension = (/[.]/.exec(imagePath)) && /[^.]+$/.exec(imagePath)[0] || '';
+    switch (fileExtension.toLowerCase()) {
+    case 'gif' :
+      return "data:image/gif;base64,";
+    case 'png' :
+      return "data:image/png;base64,";
+    case 'jpg':
+    case 'jpeg':
+      return "data:image/jpeg;base64,";
     }
   }
 
-  function extractCurrentDir(location) {
-    return location.substr(0, location.lastIndexOf('/') + 1);
-  }
-
-  function loadContentXML(contentLocation, contentXML) {
+  function loadContentXML(pathPrefix, contentXML) {
     var itemLookup = {};
     var parsed = $(contentXML);
     parsed.find('manifest item').each(function(){
       itemLookup[$(this).attr('id')] = $(this).attr('href');
     });
 
-    entirePage = '';
+    var entirePage = '';
     var itemRefs = parsed.find('itemref')
 
     itemRefs.each(function(idx){
-      var pageLocation = itemLookup[$(this).attr('idref')];
-      var pageContents = GlobalZipLoader.load('epub.zip://' + contentLocation + pageLocation);
-      var pageLocation = contentLocation + extractCurrentDir(pageLocation);
-      pageContents = replaceImages(pageLocation, pageContents);
-      entirePage += createNewPage(pageContents);
-      //doProgress(idx+1, itemRefs.length);
+      var href = itemLookup[$(this).attr('idref')];
+      var completeHref = pathPrefix + href;
+      var pagePrefix = extractPathPrefix(completeHref);
+      var page = ZipLoader.file(completeHref);
+      var decoded = decodeUTF8(page.data);
+      var pageHtml = replaceImages(pagePrefix, decoded);
+      pageHtml = removeStyles(pageHtml);
+      entirePage += createNewPage(pageHtml);
     });
     $('#container').append(entirePage);
   }
 
-  function createNewPage(pageContents) {
-    var newPage = $('<div class="page"/>');
-    newPage.html(pageContents);
-    return newPage[0].outerHTML;
-  }
-
-  function replaceImages(pageLocation, pageContents){
+  function replaceImages(pagePrefix, pageContents){
+    //prevent loading images when we parse the string
+    //http://stackoverflow.com/questions/2302129
+    pageContents = pageContents.replace(/<img(.*?)src=(.*?)>/g, '<img$1blah=$2>');
+    //console.log(pageContents);
     var newContents = $(pageContents);
     newContents.find('img').each(function(){
       var domImage = $(this);
-      var href = domImage.attr('src');
-      try {
-        var dataUri = GlobalZipLoader.loadImage('epub.zip://' + pageLocation + href);
-        domImage.attr('src', dataUri);
-      } catch (ex) {
-        domImage.remove();
-        console.log('error while loading file ' + pageLocation + href);
+      var imgSrc = domImage.attr('blah');
+      if (imgSrc.slice(0,7) == 'http://') {
+        //loading from the web, ignore it
+        return true;
       }
+      var location = buildPath(pagePrefix, imgSrc);
+      try {
+        var imageData = ZipLoader.file(location).data
+      } catch (err) {
+        console.log("Error while loading image, skipping");
+        console.log(err);
+        return true;
+      }
+      var base64image = Base64(imageData);
+      var imageUri = getImageUriFor(imgSrc);
+      domImage.attr('src', imageUri + base64image);
+
+      //hack to center images
     });
     return newContents;
   }
 
-  //makes a filereader with some extra stuff for error handling
+  var firstPage = true;
+
+  function removeStyles(pageHtml) {
+    var newHtml = $(pageHtml);
+    newHtml.siblings('style').empty().remove();
+    return newHtml;
+  }
+
+  function createNewPage(pageHtml) {
+    var newPage = $('<div class="page"/>');
+    newPage.html(pageHtml);
+    return newPage[0].outerHTML;
+  }
+
   function makeFileReader() {
     var reader = new FileReader();
 
@@ -172,17 +227,6 @@
     return reader;
   }
 
-  /* maybe later
-  function doProgress(current, total) {
-    var progressElement = $('.progress');
-    var meterElement = $('.meter');
-    var progressWidth = progressElement.width();
-    var setWidth = (current / total) * 100 + '%';
-    console.log('meter width ' + setWidth);
-    meterElement.width(setWidth); 
-  }
-  */
-
   // for deprecated FileError object still used by chrome
   function getErrorDescription(errorCode) {
     switch (errorCode) {
@@ -195,5 +239,24 @@
       case 5: return 'Data URL too long';
       default: return 'Unknown error';
     }
+  }
+
+  function decodeUTF8(str) {
+    return decodeURIComponent(escape(str));
+  }
+
+  var Base64 = function(input) {
+    var StringMaker = undefined;
+    if(navigator.userAgent.toLowerCase().indexOf(" chrome/")>=0||navigator.userAgent.toLowerCase().indexOf(" firefox/")>=0||
+    navigator.userAgent.toLowerCase().indexOf(' gecko/')>=0){StringMaker=function(){this.str="";this.length=0;
+    this.append=function(s){this.str+=s;this.length+=s.length;};this.prepend=function(s){this.str=s+this.str;this.length+=s.length;};
+    this.toString=function(){return this.str;}}}else{StringMaker=function(){this.parts=[];this.length=0;this.append=function(s){
+    this.parts.push(s);this.length+=s.length;};this.prepend=function(s){this.parts.unshift(s);this.length+=s.length;};
+    this.toString=function(){return this.parts.join('');}}}
+    var keyStr = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+    var o=new StringMaker(),a,b,c,d,f,g,h,i=0;while(i<input.length){a=input.charCodeAt(i++);
+    b=input.charCodeAt(i++);c=input.charCodeAt(i++);d=a>>2;f=((a&3)<<4)|(b>>4);g=((b&15)<<2)|(c>>6);h=c&63;
+    if(isNaN(b)){g=h=64;}else if(isNaN(c)){h=64;}o.append(keyStr.charAt(d)+keyStr.charAt(f)+keyStr.charAt(g)
+    +keyStr.charAt(h));}return o.toString();
   }
 </script>
