@@ -15,11 +15,13 @@ IE9 definitely doesn't work, IE10 PP might.
 
 Here's some epubs to give it a try with:
 
+SICP, Harold Abelson and Gerald Jay Sussman with Julie Sussman https://github.com/downloads/ieure/sicp/sicp.epub
 The Adventures of Huckleberry Finn, Mark Twain http://www.epubbooks.com/books/download/hdn2/the-adventures-of-huckleberry-finn
 Anna Karenina, Leo Tolstoy http://www.epubbooks.com/books/download/hdph/anna-karenina
 Complete Works of Edgar Allen Poe http://www.epubbooks.com/books/download/hdzb/the-works-of-edgar-allan-poe-volume-1
 
+
 h2. Works cited
 
-ZipLoader from http://blog.another-d-mention.ro/programming/read-load-files-from-zip-in-javascript/ with a few modifications to support loading a zip from a binary string rather than from a URL
+JSZip from Stuart Knightly at http://stuartk.com/jszip/
 
