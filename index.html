@@ -123,7 +123,6 @@
     //calls unzipFile once the load is finished
     var reader = makeFileReader();
     reader.onload = function(event) {
-
       var blob = event.target.result;
       ZipLoader.load(blob);
       var containerXML = ZipLoader.file('META-INF/container.xml').data;
@@ -131,9 +130,7 @@
       var pathPrefix = extractPathPrefix(contentLocation);
       loadContentXML(pathPrefix, ZipLoader.file(contentLocation).data);
       callback();
-      console.log(new Date().getTime() - starttime + ' total');
     }
-    var starttime = new Date().getTime();
     reader.readAsBinaryString(file);
   }
 
