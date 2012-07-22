@@ -15,6 +15,7 @@
         line-height:1.7em;
         font-size:19px;
         font-family:'palatino linotype', 'georgia', serif;
+        text-align:left: !important;
       }
       img {
         /* forcefully center images, may cause glitches if
@@ -122,6 +123,7 @@
     //calls unzipFile once the load is finished
     var reader = makeFileReader();
     reader.onload = function(event) {
+
       var blob = event.target.result;
       ZipLoader.load(blob);
       var containerXML = ZipLoader.file('META-INF/container.xml').data;
@@ -129,7 +131,9 @@
       var pathPrefix = extractPathPrefix(contentLocation);
       loadContentXML(pathPrefix, ZipLoader.file(contentLocation).data);
       callback();
+      console.log(new Date().getTime() - starttime + ' total');
     }
+    var starttime = new Date().getTime();
     reader.readAsBinaryString(file);
   }
 
@@ -163,7 +167,6 @@
       var page = ZipLoader.file(completeHref);
       var decoded = decodeUTF8(page.data);
       var pageHtml = replaceImages(pagePrefix, decoded);
-      pageHtml = removeStyles(pageHtml);
       entirePage += createNewPage(pageHtml);
     });
     $('#container').append(entirePage);
@@ -198,12 +201,6 @@
   }
 
   var firstPage = true;
-
-  function removeStyles(pageHtml) {
-    var newHtml = $(pageHtml);
-    newHtml.siblings('style').empty().remove();
-    return newHtml;
-  }
 
   function createNewPage(pageHtml) {
     var newPage = $('<div class="page"/>');
